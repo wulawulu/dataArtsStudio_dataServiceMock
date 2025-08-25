@@ -62,3 +62,24 @@ if __name__ == '__main__':
             print(resp.content.decode('utf-8'))
     else:
         print(resp.content.decode('utf-8'))
+
+    r = signer.HttpRequest("POST",
+                        "http://localhost/region/search",
+                        {"content-type": "application/json"},
+                        """{
+                            "region_ids": ["5210000000"]
+                        }""")
+    sig.Sign(r)
+    print(r.headers["X-Sdk-Date"])
+    print(r.headers["Authorization"])
+    resp = requests.request(r.method, r.scheme + "://" + r.host + r.uri, headers=r.headers, data=r.body)
+    print(resp.status_code, resp.reason)
+    # 如果是 JSON 响应，格式化输出中文
+    if resp.headers.get('content-type', '').startswith('application/json'):
+        try:
+            data = resp.json()
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+        except:
+            print(resp.content.decode('utf-8'))
+    else:
+        print(resp.content.decode('utf-8'))

@@ -139,12 +139,67 @@ def get_customers_batch():
         customers = []
         for row in result:
             customers.append({
-                'id': row[0],
-                'region_id': row[1],
-                'location': row[2]
+                'id': str(row[0]),        # 确保 id 是字符串类型
+                'region_id': str(row[1]), # 确保 region_id 是字符串类型
+                'location': row[2]        # location 保持原样（字符串）
             })
         
         response_data = {'customers': customers, 'count': len(customers)}
+        response = app.response_class(
+            response=json.dumps(response_data, ensure_ascii=False, indent=2),
+            status=200,
+            mimetype='application/json; charset=utf-8'
+        )
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': f'查询失败: {str(e)}'}), 500
+
+@app.route('/region/search', methods=['POST'])
+@requires_apigateway_signature()
+def search_customers_by_regions():
+    """
+    批量按台区查询客户信息
+    请求体: {"region_ids": ["5210000000", "5210000001", ...]}
+    返回: [{"id": "5000000000000", "region_id": "5210000000", "location": "106.398183,29.416481"}, ...]
+    """
+    try:
+        data = request.get_json()
+        if not data or 'region_ids' not in data:
+            return jsonify({'error': '请求体必须包含 region_ids 字段'}), 400
+        
+        region_ids = data['region_ids']
+        if not isinstance(region_ids, list) or len(region_ids) == 0:
+            return jsonify({'error': 'region_ids 必须是非空列表'}), 400
+        
+        conn = get_db_connection()
+        
+        # 构建 SQL 查询，使用参数化查询防止 SQL 注入
+        placeholders = ','.join(['?' for _ in region_ids])
+        query = f"""
+            SELECT id, region_id, location 
+            FROM customer 
+            WHERE region_id IN ({placeholders})
+            ORDER BY region_id, id
+        """
+        
+        result = conn.execute(query, region_ids).fetchall()
+        conn.close()
+        
+        # 转换结果为字典列表
+        customers = []
+        for row in result:
+            customers.append({
+                'id': str(row[0]),        # 确保 id 是字符串类型
+                'region_id': str(row[1]), # 确保 region_id 是字符串类型
+                'location': row[2]        # location 保持原样（字符串）
+            })
+        
+        response_data = {
+            'customers': customers, 
+            'count': len(customers),
+            'region_ids_queried': region_ids
+        }
         response = app.response_class(
             response=json.dumps(response_data, ensure_ascii=False, indent=2),
             status=200,
