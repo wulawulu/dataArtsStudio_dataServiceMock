@@ -305,6 +305,135 @@ def search_poi():
     except Exception as e:
         return jsonify({'error': f'搜索失败: {str(e)}'}), 500
 
+@app.route('/customer/search', methods=['POST'])
+@requires_apigateway_signature()
+def search_customers():
+    """
+    客户搜索接口
+    请求体: {
+        "ids": ["1234567890", "1234567891"], ## 可选
+        "tg_ids": ["1234567890", "1234567891"], ## 可选 ids和tg_ids必须并且只能传一个
+        "pageNum": 1,
+        "pageSize": 100
+    }
+    支持的查询字段: ids, tg_ids
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': '请求体不能为空'}), 400
+        
+        # 验证 ids 和 tg_ids 参数
+        has_ids = 'ids' in data and data['ids'] is not None
+        has_tg_ids = 'tg_ids' in data and data['tg_ids'] is not None
+        
+        if not has_ids and not has_tg_ids:
+            return jsonify({'error': '请求体必须包含 ids 或 tg_ids 字段'}), 400
+        
+        if has_ids and has_tg_ids:
+            return jsonify({'error': 'ids 和 tg_ids 不能同时提供，只能选择其中一个'}), 400
+        
+        # 验证查询参数
+        if has_ids:
+            ids = data['ids']
+            if not isinstance(ids, list) or len(ids) == 0:
+                return jsonify({'error': 'ids 必须是非空列表'}), 400
+            search_values = ids
+            search_field = 'id'
+        else:
+            tg_ids = data['tg_ids']
+            if not isinstance(tg_ids, list) or len(tg_ids) == 0:
+                return jsonify({'error': 'tg_ids 必须是非空列表'}), 400
+            search_values = tg_ids
+            search_field = 'region_id'
+        
+        # 获取分页参数
+        pageNum = data.get('pageNum', 1)
+        pageSize = data.get('pageSize', 100)
+        
+        # 验证分页参数
+        try:
+            pageNum = int(pageNum)
+            pageSize = int(pageSize)
+            if pageNum < 1:
+                pageNum = 1
+            if pageSize < 1:
+                pageSize = 100
+            elif pageSize > 1000:  # 限制最大页面大小
+                pageSize = 1000
+        except (ValueError, TypeError):
+            return jsonify({'error': 'pageNum 和 pageSize 必须是有效的整数'}), 400
+        
+        conn = get_db_connection()
+        
+        # 构建 SQL 查询，使用参数化查询防止 SQL 注入
+        placeholders = ','.join(['?' for _ in search_values])
+        
+        # 先查询总数
+        count_query = f"""
+            SELECT COUNT(*) 
+            FROM customer 
+            WHERE {search_field} IN ({placeholders})
+        """
+        total_count = conn.execute(count_query, search_values).fetchone()[0]
+        
+        # 计算分页信息
+        total_pages = (total_count + pageSize - 1) // pageSize  # 向上取整
+        offset = (pageNum - 1) * pageSize
+        
+        # 查询分页数据
+        query = f"""
+            SELECT id, region_id, location 
+            FROM customer 
+            WHERE {search_field} IN ({placeholders})
+            ORDER BY {search_field}
+            LIMIT {pageSize} OFFSET {offset}
+        """
+        
+        result = conn.execute(query, search_values).fetchall()
+        conn.close()
+        
+        # 转换结果为指定格式
+        data = []
+        for row in result:
+            # 解析经纬度字符串 "longitude,latitude"
+            location_parts = row[2].split(',')
+            longitude = float(location_parts[0]) if len(location_parts) >= 1 else 0.0
+            latitude = float(location_parts[1]) if len(location_parts) >= 2 else 0.0
+            
+            data.append({
+                'cust_no': str(row[0]),           # 客户编号
+                'gps_longitude': longitude,        # 经度
+                'gps_latitude': latitude,          # 纬度
+                'install_addr': "荆竹村7队",       # 安装地址（示例数据）
+                'tg_no': str(row[1]),             # 台区编号
+                'ec_addr': "重庆市巴南区鱼洞街道办事处莲花社区秦家院53"  # 电表地址（示例数据）
+            })
+        
+        # 构建响应数据
+        response_data = {
+            'rowsize': len(data),
+            'columnSize': 6,
+            'data': data,
+            'columnNames': [
+                'cust_no',
+                'tg_no', 
+                'gps longitude',
+                'gps latitude',
+                'ec addr',
+                'install addr'
+            ]
+        }
+        response = app.response_class(
+            response=json.dumps(response_data, ensure_ascii=False, indent=2),
+            status=200,
+            mimetype='application/json; charset=utf-8'
+        )
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': f'查询失败: {str(e)}'}), 500
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """健康检查接口，无需签名验证"""
