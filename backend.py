@@ -105,207 +105,7 @@ def requires_apigateway_signature():
         return wrapped
     return wrapper
 
-@app.route('/customer/batch', methods=['POST'])
-@requires_apigateway_signature()
-def get_customers_batch():
-    """
-    批量查询客户信息
-    请求体: {"ids": ["5000000000000", "5000000000001", ...]}
-    返回: [{"id": "5000000000000", "region_id": "5210000000", "location": "106.398183,29.416481"}, ...]
-    """
-    try:
-        data = request.get_json()
-        if not data or 'ids' not in data:
-            return jsonify({'error': '请求体必须包含 ids 字段'}), 400
-        
-        ids = data['ids']
-        if not isinstance(ids, list) or len(ids) == 0:
-            return jsonify({'error': 'ids 必须是非空列表'}), 400
-        
-        conn = get_db_connection()
-        
-        # 构建 SQL 查询，使用参数化查询防止 SQL 注入
-        placeholders = ','.join(['?' for _ in ids])
-        query = f"""
-            SELECT id, region_id, location 
-            FROM customer 
-            WHERE id IN ({placeholders})
-        """
-        
-        result = conn.execute(query, ids).fetchall()
-        conn.close()
-        
-        # 转换结果为字典列表
-        customers = []
-        for row in result:
-            customers.append({
-                'id': str(row[0]),        # 确保 id 是字符串类型
-                'region_id': str(row[1]), # 确保 region_id 是字符串类型
-                'location': row[2]        # location 保持原样（字符串）
-            })
-        
-        response_data = {'customers': customers, 'count': len(customers)}
-        response = app.response_class(
-            response=json.dumps(response_data, ensure_ascii=False, indent=2),
-            status=200,
-            mimetype='application/json; charset=utf-8'
-        )
-        return response
-        
-    except Exception as e:
-        return jsonify({'error': f'查询失败: {str(e)}'}), 500
-
-@app.route('/region/search', methods=['POST'])
-@requires_apigateway_signature()
-def search_customers_by_regions():
-    """
-    批量按台区查询客户信息
-    请求体: {"region_ids": ["5210000000", "5210000001", ...]}
-    返回: [{"id": "5000000000000", "region_id": "5210000000", "location": "106.398183,29.416481"}, ...]
-    """
-    try:
-        data = request.get_json()
-        if not data or 'region_ids' not in data:
-            return jsonify({'error': '请求体必须包含 region_ids 字段'}), 400
-        
-        region_ids = data['region_ids']
-        if not isinstance(region_ids, list) or len(region_ids) == 0:
-            return jsonify({'error': 'region_ids 必须是非空列表'}), 400
-        
-        conn = get_db_connection()
-        
-        # 构建 SQL 查询，使用参数化查询防止 SQL 注入
-        placeholders = ','.join(['?' for _ in region_ids])
-        query = f"""
-            SELECT id, region_id, location 
-            FROM customer 
-            WHERE region_id IN ({placeholders})
-            ORDER BY region_id, id
-        """
-        
-        result = conn.execute(query, region_ids).fetchall()
-        conn.close()
-        
-        # 转换结果为字典列表
-        customers = []
-        for row in result:
-            customers.append({
-                'id': str(row[0]),        # 确保 id 是字符串类型
-                'region_id': str(row[1]), # 确保 region_id 是字符串类型
-                'location': row[2]        # location 保持原样（字符串）
-            })
-        
-        response_data = {
-            'customers': customers, 
-            'count': len(customers),
-            'region_ids_queried': region_ids
-        }
-        response = app.response_class(
-            response=json.dumps(response_data, ensure_ascii=False, indent=2),
-            status=200,
-            mimetype='application/json; charset=utf-8'
-        )
-        return response
-        
-    except Exception as e:
-        return jsonify({'error': f'查询失败: {str(e)}'}), 500
-
-@app.route('/poi/search', methods=['POST'])
-@requires_apigateway_signature()
-def search_poi():
-    """
-    POI 搜索接口
-    请求体: {
-        "province": "重庆市",
-        "city": "重庆市", 
-        "district": "大渡口区",
-        "town": "",
-        "village": "",
-        "road": "",
-        "poi": "",
-        "limit": 100
-    }
-    支持的查询字段: province, city, district, town, village, road, poi
-    多个参数使用 AND 逻辑连接
-    """
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({'error': '请求体不能为空'}), 400
-        
-        conn = get_db_connection()
-        
-        # 构建动态查询条件
-        conditions = []
-        params = []
-        
-        # 支持的查询字段
-        search_fields = ['province', 'city', 'district', 'town', 'village', 'road', 'poi']
-        
-        # 收集实际使用的查询参数
-        query_params = {}
-        
-        for field in search_fields:
-            value = data.get(field)
-            if value and value.strip():  # 检查非空且非空白字符串
-                conditions.append(f"{field} = ?")
-                params.append(value.strip())
-                query_params[field] = value.strip()
-        
-        if not conditions:
-            return jsonify({'error': '至少需要提供一个非空的查询参数'}), 400
-        
-        # 构建完整的 SQL 查询
-        base_query = "SELECT province, city, district, town, village, road, poi FROM poi"
-        where_clause = " WHERE " + " AND ".join(conditions)
-        query = base_query + where_clause
-        
-        # 限制返回结果数量，避免查询过多数据
-        limit = data.get('limit', 100)
-        try:
-            limit = int(limit)
-            if limit > 1000:
-                limit = 1000
-            elif limit <= 0:
-                limit = 100
-        except (ValueError, TypeError):
-            limit = 100
-        
-        query += f" LIMIT {limit}"
-        
-        result = conn.execute(query, params).fetchall()
-        conn.close()
-        
-        # 转换结果为字典列表
-        pois = []
-        for row in result:
-            pois.append({
-                'province': row[0],
-                'city': row[1],
-                'district': row[2],
-                'town': row[3],
-                'village': row[4],
-                'road': row[5],
-                'poi': row[6]
-            })
-        
-        response_data = {
-            'pois': pois, 
-            'count': len(pois),
-            'query_params': query_params,
-            'limit': limit
-        }
-        response = app.response_class(
-            response=json.dumps(response_data, ensure_ascii=False, indent=2),
-            status=200,
-            mimetype='application/json; charset=utf-8'
-        )
-        return response
-        
-    except Exception as e:
-        return jsonify({'error': f'搜索失败: {str(e)}'}), 500
-
-@app.route('/customer/search', methods=['POST'])
+@app.route('/itg/yx20dzjx/dws/get_dim_itg_location_by_cust_no_cust_no', methods=['POST'])
 @requires_apigateway_signature()
 def search_customers():
     """
@@ -317,6 +117,35 @@ def search_customers():
         "pageSize": 100
     }
     支持的查询字段: ids, tg_ids
+    返回数据格式:
+    {
+        "requestId": "1234567890",
+        "errCode": "DLM.0",
+        "errMsg": null, ## null或者"错误信息"
+        "data": {
+            "totalSize": null, ## null或者总条数
+            "rowSize": 100,
+            "columnSize": 6,
+            "data": [
+                {
+                    "cust_no": "1234567890",
+                    "tg_no": "1234567890",
+                    "gps_longitude": 106.5,
+                    "gps_latitude": 29.5,
+                    "ec_addr": "重庆市巴南区鱼洞街道办事处莲花社区秦家院53",
+                    "install_addr": "荆竹村7队"
+                }
+            ],
+            "columnNames": [
+                "cust_no",
+                "tg_no",
+                "gps longitude",
+                "gps latitude",
+                "ec addr",
+                "install addr"
+            ]
+        }
+    }
     """
     try:
         data = request.get_json()
@@ -412,18 +241,25 @@ def search_customers():
         
         # 构建响应数据
         response_data = {
-            'rowsize': len(data),
-            'columnSize': 6,
-            'data': data,
-            'columnNames': [
-                'cust_no',
-                'tg_no', 
-                'gps longitude',
-                'gps latitude',
-                'ec addr',
-                'install addr'
-            ]
+            "requestId": "1234567890",
+            "errCode": "DLM.0",
+            "errMsg": None, ## null或者"错误信息"
+            "data":{
+                "totalSize": total_count, ## null或者总条数
+                "rowSize": len(data),
+                "columnSize": 6,
+                "data": data,
+                "columnNames": [
+                    "cust_no",
+                    "tg_no", 
+                    "gps longitude",
+                    "gps latitude",
+                    "ec addr",
+                    "install addr"
+                ]
+            }
         }
+        
         response = app.response_class(
             response=json.dumps(response_data, ensure_ascii=False, indent=2),
             status=200,
