@@ -109,14 +109,17 @@ def requires_apigateway_signature():
 @requires_apigateway_signature()
 def search_customers():
     """
-    客户搜索接口
+    客户搜索接口 - 根据客户ID返回所在台区信息
     请求体: {
-        "ids": ["1234567890", "1234567891"], ## 可选
-        "tg_ids": ["1234567890", "1234567891"], ## 可选 ids和tg_ids必须并且只能传一个
-        "pageNum": 1,
-        "pageSize": 100
+        "ids": ["1234567890", "1234567891"], ## 必须
+        "pageNum": 1, ## 必须
+        "pageSize": 100 ## 必须
     }
-    支持的查询字段: ids, tg_ids
+    支持的查询字段: ids
+    查询逻辑:
+    1. 根据提供的客户ID列表，查找这些客户所在的台区ID
+    2. 返回这些台区内所有客户的信息（不仅仅是查询的客户）
+    
     返回数据格式:
     {
         "requestId": "1234567890",
@@ -152,44 +155,37 @@ def search_customers():
         if not data:
             return jsonify({'error': '请求体不能为空'}), 400
         
-        # 验证 ids 和 tg_ids 参数
-        has_ids = 'ids' in data and data['ids'] is not None
-        has_tg_ids = 'tg_ids' in data and data['tg_ids'] is not None
+        # 验证 ids 参数
+        if 'ids' not in data or data['ids'] is None:
+            return jsonify({'error': '请求体必须包含 ids 字段'}), 400
         
-        if not has_ids and not has_tg_ids:
-            return jsonify({'error': '请求体必须包含 ids 或 tg_ids 字段'}), 400
+        ids = data['ids']
+        if not isinstance(ids, list) or len(ids) == 0:
+            return jsonify({'error': 'ids 必须是非空列表'}), 400
         
-        if has_ids and has_tg_ids:
-            return jsonify({'error': 'ids 和 tg_ids 不能同时提供，只能选择其中一个'}), 400
+        search_values = ids
+        search_field = 'id'
         
-        # 验证查询参数
-        if has_ids:
-            ids = data['ids']
-            if not isinstance(ids, list) or len(ids) == 0:
-                return jsonify({'error': 'ids 必须是非空列表'}), 400
-            search_values = ids
-            search_field = 'id'
-        else:
-            tg_ids = data['tg_ids']
-            if not isinstance(tg_ids, list) or len(tg_ids) == 0:
-                return jsonify({'error': 'tg_ids 必须是非空列表'}), 400
-            search_values = tg_ids
-            search_field = 'region_id'
+        # 验证分页参数是否存在
+        if 'pageNum' not in data or data['pageNum'] is None:
+            return jsonify({'error': '请求体必须包含 pageNum 字段'}), 400
         
-        # 获取分页参数
-        pageNum = data.get('pageNum', 1)
-        pageSize = data.get('pageSize', 100)
+        if 'pageSize' not in data or data['pageSize'] is None:
+            return jsonify({'error': '请求体必须包含 pageSize 字段'}), 400
         
-        # 验证分页参数
+        # 获取并验证分页参数
         try:
-            pageNum = int(pageNum)
-            pageSize = int(pageSize)
+            pageNum = int(data['pageNum'])
+            pageSize = int(data['pageSize'])
+            
             if pageNum < 1:
-                pageNum = 1
+                return jsonify({'error': 'pageNum 必须大于 0'}), 400
+            
             if pageSize < 1:
-                pageSize = 100
-            elif pageSize > 1000:  # 限制最大页面大小
-                pageSize = 1000
+                return jsonify({'error': 'pageSize 必须大于 0'}), 400
+            elif pageSize > 2000:  # 限制最大页面大小
+                return jsonify({'error': 'pageSize 不能超过 2000'}), 400
+                
         except (ValueError, TypeError):
             return jsonify({'error': 'pageNum 和 pageSize 必须是有效的整数'}), 400
         
@@ -198,28 +194,69 @@ def search_customers():
         # 构建 SQL 查询，使用参数化查询防止 SQL 注入
         placeholders = ','.join(['?' for _ in search_values])
         
-        # 先查询总数
-        count_query = f"""
-            SELECT COUNT(*) 
+        # 第一步：根据客户ID查找对应的台区ID
+        region_query = f"""
+            SELECT DISTINCT region_id 
             FROM customer 
             WHERE {search_field} IN ({placeholders})
         """
-        total_count = conn.execute(count_query, search_values).fetchone()[0]
+        region_result = conn.execute(region_query, search_values).fetchall()
+        
+        if not region_result:
+            # 如果没有找到任何台区，返回空结果
+            conn.close()
+            response_data = {
+                "requestId": "1234567890",
+                "errCode": "DLM.0",
+                "errMsg": None,
+                "data": {
+                    "totalSize": 0,
+                    "rowSize": 0,
+                    "columnSize": 6,
+                    "data": [],
+                    "columnNames": [
+                        "cust_no",
+                        "tg_no", 
+                        "gps longitude",
+                        "gps latitude",
+                        "ec addr",
+                        "install addr"
+                    ]
+                }
+            }
+            response = app.response_class(
+                response=json.dumps(response_data, ensure_ascii=False, indent=2),
+                status=200,
+                mimetype='application/json; charset=utf-8'
+            )
+            return response
+        
+        # 提取台区ID列表
+        region_ids = [row[0] for row in region_result]
+        region_placeholders = ','.join(['?' for _ in region_ids])
+        
+        # 第二步：查询这些台区下的所有客户总数
+        count_query = f"""
+            SELECT COUNT(*) 
+            FROM customer 
+            WHERE region_id IN ({region_placeholders})
+        """
+        total_count = conn.execute(count_query, region_ids).fetchone()[0]
         
         # 计算分页信息
         total_pages = (total_count + pageSize - 1) // pageSize  # 向上取整
         offset = (pageNum - 1) * pageSize
         
-        # 查询分页数据
+        # 第三步：查询这些台区下的所有客户分页数据
         query = f"""
             SELECT id, region_id, location 
             FROM customer 
-            WHERE {search_field} IN ({placeholders})
-            ORDER BY {search_field}
+            WHERE region_id IN ({region_placeholders})
+            ORDER BY region_id, id
             LIMIT {pageSize} OFFSET {offset}
         """
         
-        result = conn.execute(query, search_values).fetchall()
+        result = conn.execute(query, region_ids).fetchall()
         conn.close()
         
         # 转换结果为指定格式
