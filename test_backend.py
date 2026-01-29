@@ -12,9 +12,10 @@ if __name__ == '__main__':
                         "http://localhost:80/itg/yx20dzjx/dws/get_dim_itg_location_by_cust_no_cust_no",
                         {"content-type": "application/json"},
                         """{
-                            "ids": ["5000000999999", "5000000999940"],
+                            "startTime": "2026-01-14 16:30:00",
+                            "endTime": "2026-01-15 10:20:00",
                             "pageNum": 1,
-                            "pageSize": 1000
+                            "pageSize": 100
                         }""")
     sig.Sign(r)
     print(r.headers["X-Sdk-Date"])

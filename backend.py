@@ -4,7 +4,7 @@ import os
 import json
 from functools import wraps
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from apig_sdk import signer
 
 app = Flask(__name__)
@@ -15,26 +15,11 @@ def get_db_connection():
     """获取 DuckDB 数据库连接"""
     conn = duckdb.connect(':memory:')
     
-    # 创建 customer 表并导入 CSV 数据
-    customer_csv_path = os.path.join(os.path.dirname(__file__), 'csv', 'customer.csv')
+    # 创建 work_order 表并导入 CSV 数据
+    work_order_csv_path = os.path.join(os.path.dirname(__file__), 'workOrder.csv')
     conn.execute(f"""
-        CREATE TABLE customer AS 
-        SELECT * FROM read_csv_auto('{customer_csv_path}')
-    """)
-    
-    # 创建 poi 表并导入 CSV 数据
-    poi_csv_path = os.path.join(os.path.dirname(__file__), 'csv', 'poi.csv')
-    conn.execute(f"""
-        CREATE TABLE poi AS 
-        SELECT 
-            "省份" as province,
-            "城市" as city, 
-            "区" as district,
-            "街道" as town,
-            "社区" as village,
-            "道路" as road,
-            "小区" as poi
-        FROM read_csv_auto('{poi_csv_path}')
+        CREATE TABLE work_order AS 
+        SELECT * FROM read_csv_auto('{work_order_csv_path}')
     """)
     
     return conn
@@ -91,8 +76,8 @@ def requires_apigateway_signature():
 
             if dateHeader is None:
                 return jsonify({'error': 'Header x-sdk-date not found.'}), 401
-            t = datetime.strptime(dateHeader, BasicDateFormat)
-            if abs(t - datetime.utcnow()) > timedelta(minutes=15):
+            t = datetime.strptime(dateHeader, BasicDateFormat).replace(tzinfo=timezone.utc)
+            if abs(t - datetime.now(timezone.utc)) > timedelta(minutes=15):
                 return jsonify({'error': 'Signature expired.'}), 401
 
             sig = signer.Signer()
@@ -109,16 +94,17 @@ def requires_apigateway_signature():
 @requires_apigateway_signature()
 def search_customers():
     """
-    客户搜索接口 - 根据客户ID返回所在台区信息
+    工单查询接口 - 根据处理时间返回工单信息
     请求体: {
-        "ids": ["1234567890", "1234567891"], ## 必须
+        "startTime": "2026-01-14 16:30:00", ## 必须
+        "endTime": "2026-01-15 10:20:00", ## 必须
         "pageNum": 1, ## 必须
         "pageSize": 100 ## 必须
     }
-    支持的查询字段: ids
+    支持的查询字段: startTime, endTime
     查询逻辑:
-    1. 根据提供的客户ID列表，查找这些客户所在的台区ID
-    2. 返回这些台区内所有客户的信息（不仅仅是查询的客户）
+    1. 按处理时间（archiveTime）查询工单
+    2. 按处理时间排序并分页
     
     返回数据格式:
     {
@@ -131,21 +117,35 @@ def search_customers():
             "columnSize": 6,
             "data": [
                 {
-                    "cust_no": "1234567890",
-                    "tg_no": "1234567890",
-                    "gps_longitude": 106.5,
-                    "gps_latitude": 29.5,
-                    "ec_addr": "重庆市巴南区鱼洞街道办事处莲花社区秦家院53",
-                    "install_addr": "荆竹村7队"
+                    "id": 1,
+                    "orderNo": "WO2026011601",
+                    "appNo": "APP20260116001",
+                    "orgNo": "ORG001",
+                    "businessType": "电力服务",
+                    "category1": "供电质量",
+                    "category2": "停电",
+                    "category3": "计划停电",
+                    "receiveTime": "2026-01-15 09:30:00",
+                    "archiveTime": "2026-01-16 14:20:00",
+                    "content": "线路停电影响正常用电",
+                    "handleStatus": "已处理",
+                    "summary": "线路维护导致停电，已恢复供电"
                 }
             ],
             "columnNames": [
-                "cust_no",
-                "tg_no",
-                "gps longitude",
-                "gps latitude",
-                "ec addr",
-                "install addr"
+                "id",
+                "orderNo",
+                "appNo",
+                "orgNo",
+                "businessType",
+                "category1",
+                "category2",
+                "category3",
+                "receiveTime",
+                "archiveTime",
+                "content",
+                "handleStatus",
+                "summary"
             ]
         }
     }
@@ -155,16 +155,11 @@ def search_customers():
         if not data:
             return jsonify({'error': '请求体不能为空'}), 400
         
-        # 验证 ids 参数
-        if 'ids' not in data or data['ids'] is None:
-            return jsonify({'error': '请求体必须包含 ids 字段'}), 400
-        
-        ids = data['ids']
-        if not isinstance(ids, list) or len(ids) == 0:
-            return jsonify({'error': 'ids 必须是非空列表'}), 400
-        
-        search_values = ids
-        search_field = 'id'
+        # 验证时间参数
+        if 'startTime' not in data or data['startTime'] is None:
+            return jsonify({'error': '请求体必须包含 startTime 字段'}), 400
+        if 'endTime' not in data or data['endTime'] is None:
+            return jsonify({'error': '请求体必须包含 endTime 字段'}), 400
         
         # 验证分页参数是否存在
         if 'pageNum' not in data or data['pageNum'] is None:
@@ -189,92 +184,51 @@ def search_customers():
         except (ValueError, TypeError):
             return jsonify({'error': 'pageNum 和 pageSize 必须是有效的整数'}), 400
         
+        start_time_raw = str(data['startTime']).strip()
+        end_time_raw = str(data['endTime']).strip().rstrip(',')
+        time_format = "%Y-%m-%d %H:%M:%S"
+        try:
+            start_time = datetime.strptime(start_time_raw, time_format)
+            end_time = datetime.strptime(end_time_raw, time_format)
+        except ValueError:
+            return jsonify({'error': 'startTime 和 endTime 必须是有效的时间格式 YYYY-MM-DD HH:MM:SS'}), 400
+
         conn = get_db_connection()
-        
-        # 构建 SQL 查询，使用参数化查询防止 SQL 注入
-        placeholders = ','.join(['?' for _ in search_values])
-        
-        # 第一步：根据客户ID查找对应的台区ID
-        region_query = f"""
-            SELECT DISTINCT region_id 
-            FROM customer 
-            WHERE {search_field} IN ({placeholders})
+
+        count_query = """
+            SELECT COUNT(*)
+            FROM work_order
+            WHERE CAST(handleTime AS TIMESTAMP) BETWEEN ? AND ?
         """
-        region_result = conn.execute(region_query, search_values).fetchall()
-        
-        if not region_result:
-            # 如果没有找到任何台区，返回空结果
-            conn.close()
-            response_data = {
-                "requestId": "1234567890",
-                "errCode": "DLM.0",
-                "errMsg": None,
-                "data": {
-                    "totalSize": 0,
-                    "rowSize": 0,
-                    "columnSize": 6,
-                    "data": [],
-                    "columnNames": [
-                        "cust_no",
-                        "tg_no", 
-                        "gps longitude",
-                        "gps latitude",
-                        "ec addr",
-                        "install addr"
-                    ]
-                }
-            }
-            response = app.response_class(
-                response=json.dumps(response_data, ensure_ascii=False, indent=2),
-                status=200,
-                mimetype='application/json; charset=utf-8'
-            )
-            return response
-        
-        # 提取台区ID列表
-        region_ids = [row[0] for row in region_result]
-        region_placeholders = ','.join(['?' for _ in region_ids])
-        
-        # 第二步：查询这些台区下的所有客户总数
-        count_query = f"""
-            SELECT COUNT(*) 
-            FROM customer 
-            WHERE region_id IN ({region_placeholders})
-        """
-        total_count = conn.execute(count_query, region_ids).fetchone()[0]
-        
-        # 计算分页信息
-        total_pages = (total_count + pageSize - 1) // pageSize  # 向上取整
+        total_count = conn.execute(count_query, [start_time, end_time]).fetchone()[0]
+
         offset = (pageNum - 1) * pageSize
-        
-        # 第三步：查询这些台区下的所有客户分页数据
-        query = f"""
-            SELECT id, region_id, location 
-            FROM customer 
-            WHERE region_id IN ({region_placeholders})
-            ORDER BY region_id, id
-            LIMIT {pageSize} OFFSET {offset}
+        query = """
+            SELECT
+                id,
+                customerNo,
+                appNo,
+                orgNo,
+                businessType,
+                category1,
+                category2,
+                category3,
+                CAST(acceptTime AS VARCHAR) AS acceptTime,
+                CAST(handleTime AS VARCHAR) AS handleTime,
+                acceptContent,
+                handleContent,
+                overview
+            FROM work_order
+            WHERE CAST(handleTime AS TIMESTAMP) BETWEEN ? AND ?
+            ORDER BY CAST(handleTime AS TIMESTAMP)
+            LIMIT ? OFFSET ?
         """
-        
-        result = conn.execute(query, region_ids).fetchall()
+        rel = conn.execute(query, [start_time, end_time, pageSize, offset])
+        columns = [desc[0] for desc in rel.description]
+        rows = rel.fetchall()
         conn.close()
-        
-        # 转换结果为指定格式
-        data = []
-        for row in result:
-            # 解析经纬度字符串 "longitude,latitude"
-            location_parts = row[2].split(',')
-            longitude = float(location_parts[0]) if len(location_parts) >= 1 else 0.0
-            latitude = float(location_parts[1]) if len(location_parts) >= 2 else 0.0
-            
-            data.append({
-                'cust_no': str(row[0]),           # 客户编号
-                'gps_longitude': longitude,        # 经度
-                'gps_latitude': latitude,          # 纬度
-                'install_addr': "荆竹村7队",       # 安装地址（示例数据）
-                'tg_no': str(row[1]),             # 台区编号
-                'ec_addr': "重庆市巴南区鱼洞街道办事处莲花社区秦家院53"  # 电表地址（示例数据）
-            })
+
+        paged_orders = [dict(zip(columns, row)) for row in rows]
         
         # 构建响应数据
         response_data = {
@@ -283,16 +237,23 @@ def search_customers():
             "errMsg": None, ## null或者"错误信息"
             "data":{
                 "totalSize": total_count, ## null或者总条数
-                "rowSize": len(data),
-                "columnSize": 6,
-                "data": data,
+                "rowSize": len(paged_orders),
+                "columnSize": 13,
+                "data": paged_orders,
                 "columnNames": [
-                    "cust_no",
-                    "tg_no", 
-                    "gps longitude",
-                    "gps latitude",
-                    "ec addr",
-                    "install addr"
+                    "id",
+                    "customerNo",
+                    "appNo",
+                    "orgNo",
+                    "businessType",
+                    "category1",
+                    "category2",
+                    "category3",
+                    "acceptTime",
+                    "handleTime",
+                    "acceptContent",
+                    "handleContent",
+                    "overview"
                 ]
             }
         }
