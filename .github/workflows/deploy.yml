@@ -1,0 +1,60 @@
+name: Deploy Frontend to Server
+
+# 触发条件：当 main 分支有 push 时触发
+on:
+  push:
+    branches: [ "inspection" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. 拉取代码
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        ref: inspection  # 指定目标分支名
+
+    # 2. 登录 Aliyun Hub
+    - name: Login to Aliyun ACR # 改名
+      uses: docker/login-action@v2
+      with:
+        registry: ${{ secrets.ALIYUN_REGISTRY }} # 指定阿里云地址
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    # 3. 构建并推送到 Docker Hub
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        # 格式：registry.地域.aliyuncs.com/命名空间/镜像名:latest
+        tags: ${{ secrets.ALIYUN_REGISTRY }}:latest
+
+    # 4. SSH 连接服务器并重启容器
+    - name: SSH to Server and Restart Docker
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: root  # 如果你不是用 root 登录，改这里
+        key: ${{ secrets.SERVER_SSH_KEY }}
+        # 执行的脚本
+        script: |
+          # 停止并删除旧容器 (如果存在)
+          docker stop mp-mock || true
+          docker rm mp-mock || true
+
+          # 登录阿里云 (防止私有仓库没权限)
+          docker login --username=${{ secrets.DOCKERHUB_USERNAME }} --password=${{ secrets.DOCKERHUB_TOKEN }} ${{ secrets.ALIYUN_REGISTRY }}
+          
+          # 强制拉取最新镜像
+          docker pull ${{ secrets.ALIYUN_REGISTRY }}:latest
+          
+          # 启动新容器 (注意修改端口映射 -p 外部端口:容器端口)
+          docker run -d \
+            --name mp-mock \
+            --restart always \
+            -p 80:80 \
+            ${{ secrets.ALIYUN_REGISTRY }}:latest
