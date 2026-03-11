@@ -103,7 +103,7 @@ def search_customers():
     }
     支持的查询字段: startTime, endTime
     查询逻辑:
-    1. 按处理时间（archiveTime）查询工单
+    1. 按处理时间（handletime）查询工单
     2. 按处理时间排序并分页
     
     返回数据格式:
@@ -114,38 +114,48 @@ def search_customers():
         "data": {
             "totalSize": null, ## null或者总条数
             "rowSize": 100,
-            "columnSize": 6,
+            "columnSize": 19,
             "data": [
                 {
-                    "id": 1,
-                    "orderNo": "WO2026011601",
-                    "appNo": "APP20260116001",
-                    "orgNo": "ORG001",
-                    "businessType": "电力服务",
+                    "id": "WO2026011601",
+                    "customerno": "CUST0001",
+                    "appno": "APP20260116001",
+                    "orgno": "ORG001",
+                    "orgname": "城区供电局",
+                    "customername": "张伟",
+                    "customerphone": "13800000001",
+                    "address": "上海市浦东新区世纪大道100号",
+                    "businesstype": "电力服务",
                     "category1": "供电质量",
                     "category2": "停电",
                     "category3": "计划停电",
-                    "receiveTime": "2026-01-15 09:30:00",
-                    "archiveTime": "2026-01-16 14:20:00",
-                    "content": "线路停电影响正常用电",
-                    "handleStatus": "已处理",
-                    "summary": "线路维护导致停电，已恢复供电"
+                    "accepttime": "2026-01-15 09:30:00",
+                    "handletime": "2026-01-16 14:20:00",
+                    "acceptcontent": "线路停电影响正常用电",
+                    "handlecontent": "已处理",
+                    "handler": "李强",
+                    "handle_department": "抢修一班"
                 }
             ],
             "columnNames": [
                 "id",
-                "orderNo",
-                "appNo",
-                "orgNo",
-                "businessType",
+                "customerno",
+                "appno",
+                "orgno",
+                "orgname",
+                "customername",
+                "customerphone",
+                "address",
+                "businesstype",
                 "category1",
                 "category2",
                 "category3",
-                "receiveTime",
-                "archiveTime",
-                "content",
-                "handleStatus",
-                "summary"
+                "accepttime",
+                "handletime",
+                "acceptcontent",
+                "handlecontent",
+                "handler",
+                "handle_department"
             ]
         }
     }
@@ -198,7 +208,7 @@ def search_customers():
         count_query = """
             SELECT COUNT(*)
             FROM work_order
-            WHERE CAST(handleTime AS TIMESTAMP) BETWEEN ? AND ?
+            WHERE CAST(handletime AS TIMESTAMP) BETWEEN ? AND ?
         """
         total_count = conn.execute(count_query, [start_time, end_time]).fetchone()[0]
 
@@ -206,21 +216,26 @@ def search_customers():
         query = """
             SELECT
                 id,
-                customerNo,
-                appNo,
-                orgNo,
-                businessType,
+                customerno,
+                appno,
+                orgno,
+                orgname,
+                customername,
+                CAST(customerphone AS VARCHAR) AS customerphone,
+                address,
+                businesstype,
                 category1,
                 category2,
                 category3,
-                CAST(acceptTime AS VARCHAR) AS acceptTime,
-                CAST(handleTime AS VARCHAR) AS handleTime,
-                acceptContent,
-                handleContent,
-                overview
+                CAST(accepttime AS VARCHAR) AS accepttime,
+                CAST(handletime AS VARCHAR) AS handletime,
+                acceptcontent,
+                handlecontent,
+                handler,
+                handle_department
             FROM work_order
-            WHERE CAST(handleTime AS TIMESTAMP) BETWEEN ? AND ?
-            ORDER BY CAST(handleTime AS TIMESTAMP)
+            WHERE CAST(handletime AS TIMESTAMP) BETWEEN ? AND ?
+            ORDER BY CAST(handletime AS TIMESTAMP)
             LIMIT ? OFFSET ?
         """
         rel = conn.execute(query, [start_time, end_time, pageSize, offset])
@@ -238,22 +253,27 @@ def search_customers():
             "data":{
                 "totalSize": total_count, ## null或者总条数
                 "rowSize": len(paged_orders),
-                "columnSize": 13,
+                "columnSize": 18,
                 "data": paged_orders,
                 "columnNames": [
                     "id",
-                    "customerNo",
-                    "appNo",
-                    "orgNo",
-                    "businessType",
+                    "customerno",
+                    "appno",
+                    "orgno",
+                    "orgname",
+                    "customername",
+                    "customerphone",
+                    "address",
+                    "businesstype",
                     "category1",
                     "category2",
                     "category3",
-                    "acceptTime",
-                    "handleTime",
-                    "acceptContent",
-                    "handleContent",
-                    "overview"
+                    "accepttime",
+                    "handletime",
+                    "acceptcontent",
+                    "handlecontent",
+                    "handler",
+                    "handle_department"
                 ]
             }
         }

@@ -9,7 +9,7 @@ if __name__ == '__main__':
     sig.Secret = "app_secret1"
 
     r = signer.HttpRequest("POST",
-                        "http://localhost:80/itg/yx20dzjx/dws/get_dim_itg_location_by_cust_no_cust_no",
+                        "http://10.0.0.4/itg/yx20dzjx/dws/get_dim_itg_location_by_cust_no_cust_no",
                         {"content-type": "application/json"},
                         """{
                             "startTime": "2026-01-14 16:30:00",
