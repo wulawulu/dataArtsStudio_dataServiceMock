@@ -4,11 +4,11 @@ from apig_sdk import signer
 
 if __name__ == '__main__':
     sig = signer.Signer()
-    sig.Key = "apigateway_sdk_demo_key"
-    sig.Secret = "apigateway_sdk_demo_secret"
+    sig.Key = "app_key1"
+    sig.Secret = "app_secret1"
 
     r = signer.HttpRequest("POST",
-                           "https://30030113-3657-4fb6-a7ef-90764239b038.apigw.cn-north-1.huaweicloud.com/app1?a=1",
+                           "http://10.0.0.4/itg/yx20dzjx/dws/get_dim_itg_location_by_cust_no_cust_no",
                            {"x-stage": "RELEASE"},
                            "body")
     sig.Sign(r)
