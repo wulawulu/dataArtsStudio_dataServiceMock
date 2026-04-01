@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import duckdb
 import os
 import json
+import random
 from functools import wraps
 import re
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,71 @@ def get_db_connection():
     """)
     
     return conn
+
+TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+def rewrite_order_time_range(order, start_time, end_time):
+    """将模板工单时间改写到传入的时间范围内，并保证 accepttime <= handletime。"""
+    rewritten_order = dict(order)
+    total_seconds = max(int((end_time - start_time).total_seconds()), 0)
+
+    if total_seconds == 0:
+        accept_time = start_time
+        handle_time = start_time
+    else:
+        accept_offset = random.randint(0, total_seconds)
+        handle_offset = random.randint(accept_offset, total_seconds)
+        accept_time = start_time + timedelta(seconds=accept_offset)
+        handle_time = start_time + timedelta(seconds=handle_offset)
+
+    rewritten_order["accepttime"] = accept_time.strftime(TIME_FORMAT)
+    rewritten_order["handletime"] = handle_time.strftime(TIME_FORMAT)
+    return rewritten_order
+
+def build_random_work_orders(conn, start_time, end_time, page_num, page_size):
+    """从模板工单中随机挑选几条，并将时间改写到查询时间范围内。"""
+    query = """
+        SELECT
+            id,
+            customerno,
+            appno,
+            orgno,
+            orgname,
+            customername,
+            CAST(customerphone AS VARCHAR) AS customerphone,
+            address,
+            businesstype,
+            category1,
+            category2,
+            category3,
+            CAST(accepttime AS VARCHAR) AS accepttime,
+            CAST(handletime AS VARCHAR) AS handletime,
+            acceptcontent,
+            handlecontent,
+            handler,
+            handle_department
+        FROM work_order
+        ORDER BY id
+    """
+    rel = conn.execute(query)
+    columns = [desc[0] for desc in rel.description]
+    template_orders = [dict(zip(columns, row)) for row in rel.fetchall()]
+
+    if not template_orders:
+        return [], 0
+
+    min_count = min(3, len(template_orders))
+    selected_count = random.randint(min_count, len(template_orders))
+    selected_templates = random.sample(template_orders, selected_count)
+    selected_orders = [
+        rewrite_order_time_range(order, start_time, end_time)
+        for order in selected_templates
+    ]
+    selected_orders.sort(key=lambda order: order["handletime"])
+
+    offset = (page_num - 1) * page_size
+    paged_orders = selected_orders[offset:offset + page_size]
+    return paged_orders, selected_count
 
 # API Gateway 签名验证装饰器
 def requires_apigateway_signature():
@@ -196,54 +262,24 @@ def search_customers():
         
         start_time_raw = str(data['startTime']).strip()
         end_time_raw = str(data['endTime']).strip().rstrip(',')
-        time_format = "%Y-%m-%d %H:%M:%S"
         try:
-            start_time = datetime.strptime(start_time_raw, time_format)
-            end_time = datetime.strptime(end_time_raw, time_format)
+            start_time = datetime.strptime(start_time_raw, TIME_FORMAT)
+            end_time = datetime.strptime(end_time_raw, TIME_FORMAT)
         except ValueError:
             return jsonify({'error': 'startTime 和 endTime 必须是有效的时间格式 YYYY-MM-DD HH:MM:SS'}), 400
 
+        if start_time > end_time:
+            start_time, end_time = end_time, start_time
+
         conn = get_db_connection()
-
-        count_query = """
-            SELECT COUNT(*)
-            FROM work_order
-            WHERE CAST(handletime AS TIMESTAMP) BETWEEN ? AND ?
-        """
-        total_count = conn.execute(count_query, [start_time, end_time]).fetchone()[0]
-
-        offset = (pageNum - 1) * pageSize
-        query = """
-            SELECT
-                id,
-                customerno,
-                appno,
-                orgno,
-                orgname,
-                customername,
-                CAST(customerphone AS VARCHAR) AS customerphone,
-                address,
-                businesstype,
-                category1,
-                category2,
-                category3,
-                CAST(accepttime AS VARCHAR) AS accepttime,
-                CAST(handletime AS VARCHAR) AS handletime,
-                acceptcontent,
-                handlecontent,
-                handler,
-                handle_department
-            FROM work_order
-            WHERE CAST(handletime AS TIMESTAMP) BETWEEN ? AND ?
-            ORDER BY CAST(handletime AS TIMESTAMP)
-            LIMIT ? OFFSET ?
-        """
-        rel = conn.execute(query, [start_time, end_time, pageSize, offset])
-        columns = [desc[0] for desc in rel.description]
-        rows = rel.fetchall()
+        paged_orders, total_count = build_random_work_orders(
+            conn,
+            start_time,
+            end_time,
+            pageNum,
+            pageSize
+        )
         conn.close()
-
-        paged_orders = [dict(zip(columns, row)) for row in rows]
         
         # 构建响应数据
         response_data = {
