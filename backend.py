@@ -66,7 +66,10 @@ def build_random_work_orders(conn, start_time, end_time, page_num, page_size):
             acceptcontent,
             handlecontent,
             handler,
-            handle_department
+            handle_department,
+            cust_impt_lv,
+            gov_live_lv,
+            discipline
         FROM work_order
         ORDER BY id
     """
@@ -180,7 +183,7 @@ def search_customers():
         "data": {
             "totalSize": null, ## null或者总条数
             "rowSize": 100,
-            "columnSize": 19,
+            "columnSize": 21,
             "data": [
                 {
                     "id": "WO2026011601",
@@ -200,7 +203,10 @@ def search_customers():
                     "acceptcontent": "线路停电影响正常用电",
                     "handlecontent": "已处理",
                     "handler": "李强",
-                    "handle_department": "抢修一班"
+                    "handle_department": "抢修一班",
+                    "cust_impt_lv": "一级重要用户",
+                    "gov_live_lv": "政府民生服务保障用户-一级",
+                    "discipline": "配电专业"
                 }
             ],
             "columnNames": [
@@ -221,7 +227,10 @@ def search_customers():
                 "acceptcontent",
                 "handlecontent",
                 "handler",
-                "handle_department"
+                "handle_department",
+                "cust_impt_lv",
+                "gov_live_lv",
+                "discipline"
             ]
         }
     }
@@ -289,7 +298,7 @@ def search_customers():
             "data":{
                 "totalSize": total_count, ## null或者总条数
                 "rowSize": len(paged_orders),
-                "columnSize": 18,
+                "columnSize": 21,
                 "data": paged_orders,
                 "columnNames": [
                     "id",
@@ -309,7 +318,10 @@ def search_customers():
                     "acceptcontent",
                     "handlecontent",
                     "handler",
-                    "handle_department"
+                    "handle_department",
+                    "cust_impt_lv",
+                    "gov_live_lv",
+                    "discipline"
                 ]
             }
         }
