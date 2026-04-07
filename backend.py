@@ -67,7 +67,7 @@ def build_random_work_orders(conn, start_time, end_time, page_num, page_size):
             handlecontent,
             handler,
             handle_department,
-            handle_department_name,
+            handle_dept_name,
             cust_impt_lv,
             gov_live_lv,
             discipline
@@ -205,7 +205,7 @@ def search_customers():
                     "handlecontent": "已处理",
                     "handler": "李强",
                     "handle_department": "HD001",
-                    "handle_department_name": "抢修一班",
+                    "handle_dept_name": "抢修一班",
                     "cust_impt_lv": "一级重要用户",
                     "gov_live_lv": "政府民生服务保障用户-一级",
                     "discipline": "配电专业"
@@ -230,7 +230,7 @@ def search_customers():
                 "handlecontent",
                 "handler",
                 "handle_department",
-                "handle_department_name",
+                "handle_dept_name",
                 "cust_impt_lv",
                 "gov_live_lv",
                 "discipline"
@@ -322,7 +322,7 @@ def search_customers():
                     "handlecontent",
                     "handler",
                     "handle_department",
-                    "handle_department_name",
+                    "handle_dept_name",
                     "cust_impt_lv",
                     "gov_live_lv",
                     "discipline"

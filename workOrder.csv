@@ -1,4 +1,4 @@
-id,customerno,appno,orgno,orgname,customername,customerphone,address,businesstype,category1,category2,category3,accepttime,handletime,acceptcontent,handlecontent,handler,handle_department,handle_department_name,cust_impt_lv,gov_live_lv,discipline
+id,customerno,appno,orgno,orgname,customername,customerphone,address,businesstype,category1,category2,category3,accepttime,handletime,acceptcontent,handlecontent,handler,handle_department,handle_dept_name,cust_impt_lv,gov_live_lv,discipline
 WO2026011601,CUST0001,APP20260116001,ORG001,城区供电局,张伟,13800000001,上海市浦东新区世纪大道100号,电力服务,供电质量,停电,计划停电,2026-01-15 09:30:00,2026-01-16 14:20:00,线路停电影响正常用电,已处理,李强,HD001,抢修一班,一级重要用户,政府民生服务保障用户-一级,计量专业
 WO2026011602,CUST0002,APP20260116002,ORG002,东区供电局,王芳,13800000002,上海市浦东新区张江高科1号,电力服务,信息服务,短信通知,短信错发,2026-01-15 10:15:00,2026-01-16 11:30:00,收到其他客户的停电通知短信,已处理,赵敏,HD002,客服二组,非重要用户,,服务专业
 WO2026011603,CUST0003,APP20260116003,ORG001,城区供电局,李雷,13800000003,上海市杨浦区国定路200号,电力服务,供电质量,电压异常,低电压,2026-01-15 14:20:00,2026-01-16 16:45:00,家中电压过低，电器无法正常使用,已处理,陈刚,HD003,运维一班,二级重要客户,,用检专业
