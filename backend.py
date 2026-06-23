@@ -26,6 +26,17 @@ def get_db_connection():
     return conn
 
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+MESH_ORDER_CONTENTS = [
+    "现场核查用户用电异常并反馈处理结果",
+    "协调网格人员跟进停电诉求",
+    "安排工作人员上门排查线路隐患",
+    "复核客户报修地址并派发处理任务",
+    "跟踪客户服务诉求闭环进度",
+]
+
+def build_mesh_order_id(order_time):
+    """生成网格工单 ID，格式为 G + 年月日 + 六位随机编号。"""
+    return f"G{order_time.strftime('%Y%m%d')}{random.randint(0, 999999):06d}"
 
 def rewrite_order_time_range(order, start_time, end_time):
     """将模板工单时间改写到传入的时间范围内，并保证 accepttime <= handletime。"""
@@ -43,6 +54,12 @@ def rewrite_order_time_range(order, start_time, end_time):
 
     rewritten_order["accepttime"] = accept_time.strftime(TIME_FORMAT)
     rewritten_order["handletime"] = handle_time.strftime(TIME_FORMAT)
+    if random.choice([True, False]):
+        rewritten_order["meshorderid"] = build_mesh_order_id(handle_time)
+        rewritten_order["meshordercontent"] = random.choice(MESH_ORDER_CONTENTS)
+    else:
+        rewritten_order["meshorderid"] = None
+        rewritten_order["meshordercontent"] = None
     return rewritten_order
 
 def build_random_work_orders(conn, start_time, end_time, page_num, page_size):
@@ -184,10 +201,12 @@ def search_customers():
         "data": {
             "totalSize": null, ## null或者总条数
             "rowSize": 100,
-            "columnSize": 22,
+            "columnSize": 24,
             "data": [
                 {
                     "id": "WO2026011601",
+                    "meshorderid": "G20260116000010", ## null 或网格工单ID
+                    "meshordercontent": "现场核查用户用电异常并反馈处理结果", ## null 或网格工单内容
                     "customerno": "CUST0001",
                     "appno": "APP20260116001",
                     "orgno": "ORG001",
@@ -213,6 +232,8 @@ def search_customers():
             ],
             "columnNames": [
                 "id",
+                "meshorderid",
+                "meshordercontent",
                 "customerno",
                 "appno",
                 "orgno",
@@ -301,10 +322,12 @@ def search_customers():
             "data":{
                 "totalSize": total_count, ## null或者总条数
                 "rowSize": len(paged_orders),
-                "columnSize": 22,
+                "columnSize": 24,
                 "data": paged_orders,
                 "columnNames": [
                     "id",
+                    "meshorderid",
+                    "meshordercontent",
                     "customerno",
                     "appno",
                     "orgno",
