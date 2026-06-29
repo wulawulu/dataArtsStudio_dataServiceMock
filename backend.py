@@ -38,6 +38,10 @@ def build_mesh_order_id(order_time):
     """生成网格工单 ID，格式为 G + 年月日 + 六位随机编号。"""
     return f"G{order_time.strftime('%Y%m%d')}{random.randint(0, 999999):06d}"
 
+def build_work_order_id(order_time, sequence):
+    """生成工单 ID，格式为 WO + 处理日期 + 两位序号。"""
+    return f"WO{order_time.strftime('%Y%m%d')}{sequence:02d}"
+
 def rewrite_order_time_range(order, start_time, end_time):
     """将模板工单时间改写到传入的时间范围内，并保证 accepttime <= handletime。"""
     rewritten_order = dict(order)
@@ -106,6 +110,12 @@ def build_random_work_orders(conn, start_time, end_time, page_num, page_size):
         for order in selected_templates
     ]
     selected_orders.sort(key=lambda order: order["handletime"])
+    daily_id_sequences = {}
+    for order in selected_orders:
+        handle_time = datetime.strptime(order["handletime"], TIME_FORMAT)
+        handle_date = handle_time.date()
+        daily_id_sequences[handle_date] = daily_id_sequences.get(handle_date, 0) + 1
+        order["id"] = build_work_order_id(handle_time, daily_id_sequences[handle_date])
 
     offset = (page_num - 1) * page_size
     paged_orders = selected_orders[offset:offset + page_size]

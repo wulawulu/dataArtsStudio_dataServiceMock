@@ -12,8 +12,8 @@ if __name__ == '__main__':
                         "http://10.0.0.4/itg/yx20dzjx/dws/get_dim_itg_location_by_cust_no_cust_no",
                         {"content-type": "application/json"},
                         """{
-                            "startTime": "2026-01-14 16:30:00",
-                            "endTime": "2026-01-15 10:20:00",
+                            "startTime": "2026-06-14 16:30:00",
+                            "endTime": "2026-06-15 10:20:00",
                             "pageNum": 1,
                             "pageSize": 100
                         }""")
