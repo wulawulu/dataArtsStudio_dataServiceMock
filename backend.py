@@ -75,6 +75,8 @@ def build_random_work_orders(conn, start_time, end_time, page_num, page_size):
             appno,
             orgno,
             orgname,
+            parent_org_code,
+            parent_org_name,
             customername,
             CAST(customerphone AS VARCHAR) AS customerphone,
             address,
@@ -89,7 +91,10 @@ def build_random_work_orders(conn, start_time, end_time, page_num, page_size):
             handler,
             handle_department,
             handle_dept_name,
-            cust_impt_lv,
+            CASE
+                WHEN cust_impt_lv = '非重要客户' THEN '非重要用户'
+                ELSE cust_impt_lv
+            END AS cust_impt_lv,
             gov_live_lv,
             discipline
         FROM work_order
@@ -211,7 +216,7 @@ def search_customers():
         "data": {
             "totalSize": null, ## null或者总条数
             "rowSize": 100,
-            "columnSize": 24,
+            "columnSize": 26,
             "data": [
                 {
                     "id": "WO2026011601",
@@ -221,6 +226,8 @@ def search_customers():
                     "appno": "APP20260116001",
                     "orgno": "ORG001",
                     "orgname": "城区供电局",
+                    "parent_org_code": "PARENT001", ## null 或父单位 ID
+                    "parent_org_name": "上海市供电公司", ## null 或父单位名称
                     "customername": "张伟",
                     "customerphone": "13800000001",
                     "address": "上海市浦东新区世纪大道100号",
@@ -248,6 +255,8 @@ def search_customers():
                 "appno",
                 "orgno",
                 "orgname",
+                "parent_org_code",
+                "parent_org_name",
                 "customername",
                 "customerphone",
                 "address",
@@ -332,7 +341,7 @@ def search_customers():
             "data":{
                 "totalSize": total_count, ## null或者总条数
                 "rowSize": len(paged_orders),
-                "columnSize": 24,
+                "columnSize": 26,
                 "data": paged_orders,
                 "columnNames": [
                     "id",
@@ -342,6 +351,8 @@ def search_customers():
                     "appno",
                     "orgno",
                     "orgname",
+                    "parent_org_code",
+                    "parent_org_name",
                     "customername",
                     "customerphone",
                     "address",
