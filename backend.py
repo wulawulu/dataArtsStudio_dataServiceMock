@@ -26,6 +26,8 @@ def get_db_connection():
     return conn
 
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+BUSINESS_TYPES = ("005", "009", "018")
+RESP_FLAG_OPTIONS = ("01", "02")
 MESH_ORDER_CONTENTS = [
     "现场核查用户用电异常并反馈处理结果",
     "协调网格人员跟进停电诉求",
@@ -41,6 +43,18 @@ def build_mesh_order_id(order_time):
 def build_work_order_id(order_time, sequence):
     """生成工单 ID，格式为 WO + 处理日期 + 两位序号。"""
     return f"WO{order_time.strftime('%Y%m%d')}{sequence:02d}"
+
+def normalize_business_type(business_type):
+    """兼容模板中的中文业务类型，统一输出为 005/009/018。"""
+    if business_type in BUSINESS_TYPES:
+        return business_type
+    return random.choice(("005", "009"))
+
+def build_resp_flag(business_type):
+    """018 必须返回 null，其余业务类型返回 01 或 02。"""
+    if business_type == "018":
+        return None
+    return random.choice(RESP_FLAG_OPTIONS)
 
 def rewrite_order_time_range(order, start_time, end_time):
     """将模板工单时间改写到传入的时间范围内，并保证 accepttime <= handletime。"""
@@ -114,6 +128,9 @@ def build_random_work_orders(conn, start_time, end_time, page_num, page_size):
         rewrite_order_time_range(order, start_time, end_time)
         for order in selected_templates
     ]
+    for order in selected_orders:
+        order["businesstype"] = normalize_business_type(order["businesstype"])
+        order["resp_flag"] = build_resp_flag(order["businesstype"])
     selected_orders.sort(key=lambda order: order["handletime"])
     daily_id_sequences = {}
     for order in selected_orders:
@@ -216,7 +233,7 @@ def search_customers():
         "data": {
             "totalSize": null, ## null或者总条数
             "rowSize": 100,
-            "columnSize": 26,
+            "columnSize": 27,
             "data": [
                 {
                     "id": "WO2026011601",
@@ -231,7 +248,8 @@ def search_customers():
                     "customername": "张伟",
                     "customerphone": "13800000001",
                     "address": "上海市浦东新区世纪大道100号",
-                    "businesstype": "电力服务",
+                    "businesstype": "005", ## 可选值 005/009/018
+                    "resp_flag": "01", ## 可选值 null/"01"/"02"；businesstype=018 时必为 null
                     "category1": "供电质量",
                     "category2": "停电",
                     "category3": "计划停电",
@@ -261,6 +279,7 @@ def search_customers():
                 "customerphone",
                 "address",
                 "businesstype",
+                "resp_flag",
                 "category1",
                 "category2",
                 "category3",
@@ -341,7 +360,7 @@ def search_customers():
             "data":{
                 "totalSize": total_count, ## null或者总条数
                 "rowSize": len(paged_orders),
-                "columnSize": 26,
+                "columnSize": 27,
                 "data": paged_orders,
                 "columnNames": [
                     "id",
@@ -357,6 +376,7 @@ def search_customers():
                     "customerphone",
                     "address",
                     "businesstype",
+                    "resp_flag",
                     "category1",
                     "category2",
                     "category3",
